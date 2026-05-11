@@ -10,6 +10,7 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.typing import typing
 from src.config import settings as app_settings
 from src.core.agent import route_intent
 from src.core.chat_service import load_chat
@@ -187,9 +188,10 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
             f"⏳ Собираю выжимку по топ-{top_n} чатам за {hours}ч…"
         )
         try:
-            parts = await build_all_chats_summary(
-                message.from_user.id, top_n=top_n, hours=hours,
-            )
+            async with typing(message):
+                parts = await build_all_chats_summary(
+                    message.from_user.id, top_n=top_n, hours=hours,
+                )
         except Exception:
             logger.exception("all_chats_summary failed")
             try:
@@ -511,6 +513,67 @@ async def _exec_remove_news_topic(intent, message) -> None:
     await message.answer(f"🗑 Удалил: {names}")
 
 
+# Fast-path: распознавание частотных фраз про настройки без LLM. Если фраза
+# не подошла ни под один шаблон — возвращаем None и идём в полноценный агент.
+_ON_RE = r"(?:включ(?:и|ить|ай)|вкл|enable|on|поставь|задай|set)"
+_OFF_RE = r"(?:выключ(?:и|ить|ай)|выкл|отключ(?:и|ить)|disable|off)"
+_HM_INLINE_RE = r"(?:в\s*)?(\d{1,2})(?::(\d{2}))?"
+
+
+def _parse_hm(h_str: str, m_str: str | None) -> str | None:
+    try:
+        h = int(h_str)
+        m = int(m_str) if m_str else 0
+    except ValueError:
+        return None
+    if 0 <= h <= 23 and 0 <= m <= 59:
+        return f"{h:02d}:{m:02d}"
+    return None
+
+
+def _fast_path_intent(raw: str) -> dict | None:
+    text = raw.strip().lower()
+    # "и/+ дайджест" — может быть multi-action — не наш кейс
+    if " и " in text or " + " in text or "," in text:
+        return None
+    # toggle digest
+    if re.fullmatch(rf"\s*{_ON_RE}\s+дайдж(?:ест|ета)\s*", text):
+        return {"intent": "set_setting", "key": "digest_enabled", "value": True}
+    if re.fullmatch(rf"\s*{_OFF_RE}\s+дайдж(?:ест|ета)\s*", text):
+        return {"intent": "set_setting", "key": "digest_enabled", "value": False}
+    # "дайджест в HH(:MM)?" / "включи дайджест в HH"
+    m = re.fullmatch(rf"\s*(?:{_ON_RE}\s+)?дайдж(?:ест|ета)\s+{_HM_INLINE_RE}\s*", text)
+    if m:
+        hm = _parse_hm(m.group(1), m.group(2))
+        if hm:
+            return {
+                "intent": "multi",
+                "actions": [
+                    {"intent": "set_setting", "key": "digest_time", "value": hm},
+                    {"intent": "set_setting", "key": "digest_enabled", "value": True},
+                ],
+            }
+    # toggle news
+    if re.fullmatch(rf"\s*{_ON_RE}\s+новост(?:и|ей)\s*", text):
+        return {"intent": "set_setting", "key": "news_enabled", "value": True}
+    if re.fullmatch(rf"\s*{_OFF_RE}\s+новост(?:и|ей)\s*", text):
+        return {"intent": "set_setting", "key": "news_enabled", "value": False}
+    # toggle reminders
+    if re.fullmatch(rf"\s*{_ON_RE}\s+напоминан(?:ия|ий)\s*", text):
+        return {"intent": "set_setting", "key": "reminders_enabled", "value": True}
+    if re.fullmatch(rf"\s*{_OFF_RE}\s+напоминан(?:ия|ий)\s*", text):
+        return {"intent": "set_setting", "key": "reminders_enabled", "value": False}
+    # toggle auto-reply
+    if re.fullmatch(rf"\s*{_ON_RE}\s+авто[- ]?ответ(?:ы)?\s*", text):
+        return {"intent": "set_setting", "key": "auto_reply_enabled", "value": True}
+    if re.fullmatch(rf"\s*{_OFF_RE}\s+авто[- ]?ответ(?:ы)?\s*", text):
+        return {"intent": "set_setting", "key": "auto_reply_enabled", "value": False}
+    # /todos shortcut
+    if text in {"обещания", "что я обещал", "мои обещания", "todos", "задачи", "обязательства"}:
+        return {"intent": "list_todos"}
+    return None
+
+
 async def _process_text(
     raw: str,
     message: Message,
@@ -528,30 +591,41 @@ async def _process_text(
         )
         return
 
-    now_local_str = now_in_tz(tz_name).strftime("%Y-%m-%d %H:%M")
-    history_block = ctx_store.render_history_block(message.from_user.id)
-    try:
-        intent = await route_intent(
-            provider, raw,
-            heavy=False,
-            now_local=now_local_str,
-            tz_name=tz_name,
-            history_block=history_block,
+    # Fast-path: частотные фразы про настройки обрабатываем регексом без LLM —
+    # экономит ~2-3 сек на самых популярных запросах.
+    fast_intent = _fast_path_intent(raw)
+    if fast_intent is not None:
+        await _dispatch(fast_intent, message, state, userbot_manager, tz_name=tz_name)
+        ctx_store.add_turn(
+            message.from_user.id, raw, _summarize_intent_for_memory(fast_intent),
         )
-    except Exception:
-        logger.exception("agent route_intent failed")
-        await message.answer("Не получилось разобрать запрос (LLM ошибся).")
         return
 
-    if intent.get("intent") == "multi":
-        actions = intent.get("actions") or []
-        if not isinstance(actions, list) or not actions:
-            await message.answer("Не понял, что сделать.")
+    async with typing(message):
+        now_local_str = now_in_tz(tz_name).strftime("%Y-%m-%d %H:%M")
+        history_block = ctx_store.render_history_block(message.from_user.id)
+        try:
+            intent = await route_intent(
+                provider, raw,
+                heavy=False,
+                now_local=now_local_str,
+                tz_name=tz_name,
+                history_block=history_block,
+            )
+        except Exception:
+            logger.exception("agent route_intent failed")
+            await message.answer("Не получилось разобрать запрос (LLM ошибся).")
             return
-        for sub in actions:
-            await _dispatch(sub, message, state, userbot_manager, tz_name=tz_name)
-    else:
-        await _dispatch(intent, message, state, userbot_manager, tz_name=tz_name)
+
+        if intent.get("intent") == "multi":
+            actions = intent.get("actions") or []
+            if not isinstance(actions, list) or not actions:
+                await message.answer("Не понял, что сделать.")
+                return
+            for sub in actions:
+                await _dispatch(sub, message, state, userbot_manager, tz_name=tz_name)
+        else:
+            await _dispatch(intent, message, state, userbot_manager, tz_name=tz_name)
 
     summary = _summarize_intent_for_memory(intent)
     ctx_store.add_turn(message.from_user.id, raw, summary)

@@ -6,6 +6,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from src.bot.filters import OwnerOnly
+from src.bot.typing import typing
 from src.core.all_chats_summary import (
     DEFAULT_HOURS,
     DEFAULT_TOP_N,
@@ -51,9 +52,10 @@ async def cmd_all_summary(message: Message, command: CommandObject) -> None:
         f"⏳ Собираю выжимку по топ-{top_n} чатам за {hours}ч…"
     )
     try:
-        parts = await build_all_chats_summary(
-            message.from_user.id, top_n=top_n, hours=hours,
-        )
+        async with typing(message):
+            parts = await build_all_chats_summary(
+                message.from_user.id, top_n=top_n, hours=hours,
+            )
     except Exception:
         logger.exception("all_summary failed")
         try:

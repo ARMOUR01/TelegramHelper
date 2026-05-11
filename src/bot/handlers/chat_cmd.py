@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.typing import typing
 from src.core.chat_service import load_chat
 from src.core.commitment_extractor import extract_and_save_commitments
 from src.core.contact_resolver import ContactCandidate, resolve
@@ -154,7 +155,8 @@ async def cb_summary(callback: CallbackQuery, userbot_manager: UserbotManager) -
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    text = await summarize_chat(provider, contact, messages, heavy=heavy)
+    async with typing(callback):
+        text = await summarize_chat(provider, contact, messages, heavy=heavy)
     if callback.message:
         await callback.message.edit_text(
             f"📝 <b>Саммари — {contact.display_name}</b>\n\n{text}",
@@ -170,12 +172,13 @@ async def cb_tasks(callback: CallbackQuery, userbot_manager: UserbotManager) -> 
         return
     _client, owner, contact, messages, provider, _heavy = bundle
 
-    items = await extract_and_save_commitments(
-        provider,
-        user_id=owner.id,
-        contact=contact,
-        messages=messages,
-    )
+    async with typing(callback):
+        items = await extract_and_save_commitments(
+            provider,
+            user_id=owner.id,
+            contact=contact,
+            messages=messages,
+        )
 
     if not items:
         body = "Явных обязательств не нашёл."
@@ -203,7 +206,8 @@ async def cb_draft(callback: CallbackQuery, userbot_manager: UserbotManager) -> 
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    draft = await draft_reply(provider, contact, messages, heavy=heavy)
+    async with typing(callback):
+        draft = await draft_reply(provider, contact, messages, heavy=heavy)
     payload = json.dumps({"peer_id": peer_id, "text": draft}, ensure_ascii=False)
 
     from src.db.repo import create_pending_action
@@ -234,7 +238,8 @@ async def cb_catchup(callback: CallbackQuery, userbot_manager: UserbotManager) -
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    text = await catchup(provider, contact, messages, heavy=heavy)
+    async with typing(callback):
+        text = await catchup(provider, contact, messages, heavy=heavy)
     if callback.message:
         await callback.message.edit_text(
             f"⏪ <b>Где мы остановились — {contact.display_name}</b>\n\n{text}",

@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.typing import typing
 from src.core.news import build_news_digest
 from src.db.repo import (
     get_or_create_user,
@@ -57,7 +58,8 @@ async def cmd_news(message: Message, command: CommandObject, userbot_manager: Us
         return
 
     await message.answer(f"📰 Готовлю дайджест по «<i>{topic}</i>» за последние {hours}ч…")
-    text = await build_news_digest(client, message.from_user.id, topic, hours=hours)
+    async with typing(message):
+        text = await build_news_digest(client, message.from_user.id, topic, hours=hours)
     await message.answer(text, disable_web_page_preview=True)
 
 
