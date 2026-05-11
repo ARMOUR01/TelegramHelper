@@ -1,5 +1,6 @@
 """Свободный текст (и голос) → агент → действие. Регистрируется последним в bot/app.py,
 чтобы команды и FSM перехватывали свои события раньше."""
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -10,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.task_registry import cancellable
 from src.bot.typing import typing
 from src.config import settings as app_settings
 from src.core.agent import route_intent
@@ -188,10 +190,16 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
             f"⏳ Собираю выжимку по топ-{top_n} чатам за {hours}ч…"
         )
         try:
-            async with typing(message):
+            async with cancellable(message.from_user.id), typing(message):
                 parts = await build_all_chats_summary(
                     message.from_user.id, top_n=top_n, hours=hours,
                 )
+        except asyncio.CancelledError:
+            try:
+                await notice.edit_text("🛑 Отменено.")
+            except Exception:
+                pass
+            return
         except Exception:
             logger.exception("all_chats_summary failed")
             try:
@@ -601,31 +609,36 @@ async def _process_text(
         )
         return
 
-    async with typing(message):
-        now_local_str = now_in_tz(tz_name).strftime("%Y-%m-%d %H:%M")
-        history_block = ctx_store.render_history_block(message.from_user.id)
-        try:
-            intent = await route_intent(
-                provider, raw,
-                heavy=False,
-                now_local=now_local_str,
-                tz_name=tz_name,
-                history_block=history_block,
-            )
-        except Exception:
-            logger.exception("agent route_intent failed")
-            await message.answer("Не получилось разобрать запрос (LLM ошибся).")
-            return
-
-        if intent.get("intent") == "multi":
-            actions = intent.get("actions") or []
-            if not isinstance(actions, list) or not actions:
-                await message.answer("Не понял, что сделать.")
+    try:
+        async with cancellable(message.from_user.id), typing(message):
+            now_local_str = now_in_tz(tz_name).strftime("%Y-%m-%d %H:%M")
+            history_block = ctx_store.render_history_block(message.from_user.id)
+            try:
+                intent = await route_intent(
+                    provider, raw,
+                    heavy=False,
+                    now_local=now_local_str,
+                    tz_name=tz_name,
+                    history_block=history_block,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("agent route_intent failed")
+                await message.answer("Не получилось разобрать запрос (LLM ошибся).")
                 return
-            for sub in actions:
-                await _dispatch(sub, message, state, userbot_manager, tz_name=tz_name)
-        else:
-            await _dispatch(intent, message, state, userbot_manager, tz_name=tz_name)
+
+            if intent.get("intent") == "multi":
+                actions = intent.get("actions") or []
+                if not isinstance(actions, list) or not actions:
+                    await message.answer("Не понял, что сделать.")
+                    return
+                for sub in actions:
+                    await _dispatch(sub, message, state, userbot_manager, tz_name=tz_name)
+            else:
+                await _dispatch(intent, message, state, userbot_manager, tz_name=tz_name)
+    except asyncio.CancelledError:
+        return
 
     summary = _summarize_intent_for_memory(intent)
     ctx_store.add_turn(message.from_user.id, raw, summary)

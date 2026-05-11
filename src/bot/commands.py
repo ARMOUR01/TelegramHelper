@@ -30,6 +30,7 @@ OWNER_COMMANDS: list[BotCommand] = [
     BotCommand(command="index", description="📚 Индексация чата"),
     BotCommand(command="login", description="🔐 Подключить Telegram"),
     BotCommand(command="logout", description="🚪 Отключить аккаунт"),
+    BotCommand(command="stop", description="🛑 Отменить текущую операцию"),
     BotCommand(command="help", description="ℹ Помощь"),
 ]
 

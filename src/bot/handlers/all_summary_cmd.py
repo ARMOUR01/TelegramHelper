@@ -1,4 +1,5 @@
 """/all_summary — выжимка по топ-N активным личным чатам за окно времени."""
+import asyncio
 import logging
 
 from aiogram import Router
@@ -6,6 +7,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from src.bot.filters import OwnerOnly
+from src.bot.task_registry import cancellable
 from src.bot.typing import typing
 from src.core.all_chats_summary import (
     DEFAULT_HOURS,
@@ -52,10 +54,16 @@ async def cmd_all_summary(message: Message, command: CommandObject) -> None:
         f"⏳ Собираю выжимку по топ-{top_n} чатам за {hours}ч…"
     )
     try:
-        async with typing(message):
+        async with cancellable(message.from_user.id), typing(message):
             parts = await build_all_chats_summary(
                 message.from_user.id, top_n=top_n, hours=hours,
             )
+    except asyncio.CancelledError:
+        try:
+            await notice.edit_text("🛑 Отменено.")
+        except Exception:
+            pass
+        return
     except Exception:
         logger.exception("all_summary failed")
         try:

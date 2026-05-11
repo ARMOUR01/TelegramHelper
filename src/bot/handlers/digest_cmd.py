@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from aiogram import Router
@@ -5,6 +6,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from src.bot.filters import OwnerOnly
+from src.bot.task_registry import cancellable
 from src.bot.typing import typing
 from src.core.digest import build_digest
 from src.core.timeutil import tz_short
@@ -24,8 +26,11 @@ async def cmd_digest(message: Message, command: CommandObject) -> None:
     arg = (command.args or "").strip().lower()
 
     if not arg or arg == "now":
-        async with typing(message):
-            text = await build_digest(message.from_user.id)
+        try:
+            async with cancellable(message.from_user.id), typing(message):
+                text = await build_digest(message.from_user.id)
+        except asyncio.CancelledError:
+            return
         await message.answer(text)
         return
 
