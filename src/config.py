@@ -13,8 +13,10 @@ class LLMDefaults:
     OPENAI_CHAT_HEAVY = "gpt-5.5"
     OPENAI_EMBED = "text-embedding-3-small"
 
-    GEMINI_CHAT_LIGHT = "gemini-3-flash"
-    GEMINI_CHAT_HEAVY = "gemini-3.1-pro"
+    # Google API принимает только generic-алиасы без номера версии: они автоматически
+    # указывают на актуальную стабильную модель (gemini-3-flash и т.п. дают 404).
+    GEMINI_CHAT_LIGHT = "gemini-flash-latest"
+    GEMINI_CHAT_HEAVY = "gemini-pro-latest"
     GEMINI_EMBED = "text-embedding-004"
 
 
