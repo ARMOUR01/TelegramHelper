@@ -21,6 +21,7 @@ from src.bot.handlers import (
     style_cmd,
     todos,
 )
+from src.bot.commands import setup_bot_commands
 from src.config import settings
 from src.core.notifier import notifier
 from src.userbot.manager import UserbotManager
@@ -58,6 +59,8 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
 
     me = await bot.get_me()
     logger.info("Control bot started as @%s", me.username)
+
+    await setup_bot_commands(bot)
 
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

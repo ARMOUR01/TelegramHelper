@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from src.bot.filters import OwnerOnly
+from src.bot.typing import typing
 from src.core.digest import build_digest
 from src.core.timeutil import tz_short
 from src.db.repo import get_or_create_user
@@ -23,7 +24,8 @@ async def cmd_digest(message: Message, command: CommandObject) -> None:
     arg = (command.args or "").strip().lower()
 
     if not arg or arg == "now":
-        text = await build_digest(message.from_user.id)
+        async with typing(message):
+            text = await build_digest(message.from_user.id)
         await message.answer(text)
         return
 
