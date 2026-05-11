@@ -52,10 +52,12 @@ class UserbotManager:
                         self._clients[user.telegram_id] = client
                         from src.userbot.auto_reply import attach_auto_reply
                         from src.userbot.dialog_events import attach_dialog_event_handlers
+                        from src.userbot.engagement_events import attach_engagement_handlers
                         from src.userbot.mirror import attach_mirror
                         attach_auto_reply(client, user.telegram_id)
                         attach_dialog_event_handlers(client, user.telegram_id)
                         attach_mirror(client, user.telegram_id)
+                        attach_engagement_handlers(client, user.telegram_id)
                         logger.info("Restored Telethon client for user %s", user.telegram_id)
                     else:
                         await client.disconnect()
@@ -70,10 +72,12 @@ class UserbotManager:
         self._clients[telegram_id] = client
         from src.userbot.auto_reply import attach_auto_reply
         from src.userbot.dialog_events import attach_dialog_event_handlers
+        from src.userbot.engagement_events import attach_engagement_handlers
         from src.userbot.mirror import attach_mirror
         attach_auto_reply(client, telegram_id)
         attach_dialog_event_handlers(client, telegram_id)
         attach_mirror(client, telegram_id)
+        attach_engagement_handlers(client, telegram_id)
 
     async def remove_client(self, telegram_id: int) -> None:
         client = self._clients.pop(telegram_id, None)

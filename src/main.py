@@ -6,6 +6,8 @@ from src.core.auto_sync import auto_sync_loop
 from src.core.digest import digest_scheduler_loop
 from src.core.news import news_scheduler_loop
 from src.core.reminders import reminders_loop
+from src.core.stalker.poi_watcher import poi_watcher_loop
+from src.core.stalker.reengagement import reengagement_loop
 from src.db.session import init_db
 from src.userbot.manager import UserbotManager
 
@@ -30,6 +32,10 @@ async def main() -> None:
         asyncio.create_task(reminders_loop(), name="reminders-loop"),
         asyncio.create_task(news_scheduler_loop(), name="news-scheduler"),
         asyncio.create_task(auto_sync_loop(), name="auto-sync"),
+        asyncio.create_task(reengagement_loop(), name="reengagement-loop"),
+        asyncio.create_task(
+            poi_watcher_loop(lambda: userbot_manager), name="poi-watcher",
+        ),
     ]
 
     try:

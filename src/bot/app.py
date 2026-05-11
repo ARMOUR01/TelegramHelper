@@ -17,6 +17,7 @@ from src.bot.handlers import (
     search,
     send,
     settings as settings_handlers,
+    stalker_cmd,
     start,
     stop_cmd,
     style_cmd,
@@ -58,6 +59,7 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(style_cmd.router)
     dp.include_router(news_cmd.router)
     dp.include_router(news_topics.router)
+    dp.include_router(stalker_cmd.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше
     dp.include_router(free_text.router)
 
