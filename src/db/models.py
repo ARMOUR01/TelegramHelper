@@ -111,6 +111,89 @@ class Contact(Base):
     style_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_seen_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
+    # «Сталкеринг» / personal CRM
+    is_poi: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_mutual_contact: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_known_first_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    last_known_last_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    last_known_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_known_photo_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_seen_online_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dossier: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    dossier_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_reengagement_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DeletedMessage(Base):
+    """Лог удалённых «для всех» сообщений (то, что юзер ещё видит до удаления — на момент мирора)."""
+
+    __tablename__ = "deleted_messages"
+    __table_args__ = (
+        Index("ix_deleted_user_peer_at", "user_id", "peer_id", "deleted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    peer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    message_id: Mapped[int] = mapped_column(BigInteger)
+    sender_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    is_outgoing: Mapped[bool] = mapped_column(Boolean, default=False)
+    original_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ProfileChange(Base):
+    """Лог изменений профиля контакта (имя/username/аватар)."""
+
+    __tablename__ = "profile_changes"
+    __table_args__ = (
+        Index("ix_profile_change_user_peer_at", "user_id", "peer_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # name | username | photo | mutual
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class OnlineObservation(Base):
+    """Наблюдение «контакт был онлайн» — используется для heatmap'ов активности POI."""
+
+    __tablename__ = "online_observations"
+    __table_args__ = (
+        Index("ix_online_obs_user_peer_at", "user_id", "peer_id", "observed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ChatEngagementEvent(Base):
+    """Сигналы, что контакт «заходил в твой чат»:
+    - read   : прочитал твоё исходящее сообщение
+    - typing : начал печатать в чате с тобой
+    - in     : написал тебе (incoming)
+    - out    : ты сам написал (outgoing — для контекста)
+    """
+
+    __tablename__ = "chat_engagement_events"
+    __table_args__ = (
+        Index("ix_engagement_user_peer_at", "user_id", "peer_id", "at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(8))  # read | typing | in | out
+    at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
 
 class Message(Base):
     """Кэш сообщений из чатов."""
