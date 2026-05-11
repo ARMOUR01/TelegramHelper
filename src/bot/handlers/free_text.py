@@ -165,6 +165,50 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         )
         return
 
+    if kind == "all_chats_summary":
+        from src.core.all_chats_summary import (
+            DEFAULT_HOURS,
+            DEFAULT_TOP_N,
+            MAX_HOURS,
+            MAX_TOP_N,
+            build_all_chats_summary,
+        )
+        try:
+            top_n = int(intent.get("top_n") or DEFAULT_TOP_N)
+        except (TypeError, ValueError):
+            top_n = DEFAULT_TOP_N
+        try:
+            hours = int(intent.get("hours") or DEFAULT_HOURS)
+        except (TypeError, ValueError):
+            hours = DEFAULT_HOURS
+        top_n = max(1, min(MAX_TOP_N, top_n))
+        hours = max(1, min(MAX_HOURS, hours))
+        notice = await message.answer(
+            f"⏳ Собираю выжимку по топ-{top_n} чатам за {hours}ч…"
+        )
+        try:
+            parts = await build_all_chats_summary(
+                message.from_user.id, top_n=top_n, hours=hours,
+            )
+        except Exception:
+            logger.exception("all_chats_summary failed")
+            try:
+                await notice.edit_text("❌ Не удалось собрать выжимку.")
+            except Exception:
+                await message.answer("❌ Не удалось собрать выжимку.")
+            return
+        if not parts:
+            await notice.edit_text("Пусто.")
+            return
+        first, *rest = parts
+        try:
+            await notice.edit_text(first, disable_web_page_preview=True)
+        except Exception:
+            await message.answer(first, disable_web_page_preview=True)
+        for chunk in rest:
+            await message.answer(chunk, disable_web_page_preview=True)
+        return
+
     if kind == "list_todos":
         async with get_session() as session:
             owner = await get_or_create_user(session, message.from_user.id)
@@ -540,6 +584,10 @@ def _summarize_intent_for_memory(intent: dict) -> str:
         return f"убрал напоминание: {intent.get('query')}"
     if kind == "add_reminders_from_chat":
         return f"вытащил обещания из чата с {intent.get('contact')}"
+    if kind == "all_chats_summary":
+        top_n = intent.get("top_n") or 10
+        hours = intent.get("hours") or 24
+        return f"общая выжимка: топ-{top_n} личных чатов за {hours}ч"
     if kind == "list_todos":
         return "показал список обещаний"
     if kind == "chat":
