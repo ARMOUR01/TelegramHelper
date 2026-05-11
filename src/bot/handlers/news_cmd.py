@@ -1,4 +1,5 @@
 """/news <тема> и /news_channels — управление новостными каналами."""
+import asyncio
 import re
 
 from aiogram import F, Router
@@ -7,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.task_registry import cancellable
 from src.bot.typing import typing
 from src.core.news import build_news_digest
 from src.db.repo import (
@@ -58,8 +60,11 @@ async def cmd_news(message: Message, command: CommandObject, userbot_manager: Us
         return
 
     await message.answer(f"📰 Готовлю дайджест по «<i>{topic}</i>» за последние {hours}ч…")
-    async with typing(message):
-        text = await build_news_digest(client, message.from_user.id, topic, hours=hours)
+    try:
+        async with cancellable(message.from_user.id), typing(message):
+            text = await build_news_digest(client, message.from_user.id, topic, hours=hours)
+    except asyncio.CancelledError:
+        return
     await message.answer(text, disable_web_page_preview=True)
 
 

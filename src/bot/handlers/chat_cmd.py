@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters import OwnerOnly
+from src.bot.task_registry import cancellable
 from src.bot.typing import typing
 from src.core.chat_service import load_chat
 from src.core.commitment_extractor import extract_and_save_commitments
@@ -155,8 +156,11 @@ async def cb_summary(callback: CallbackQuery, userbot_manager: UserbotManager) -
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    async with typing(callback):
-        text = await summarize_chat(provider, contact, messages, heavy=heavy)
+    try:
+        async with cancellable(callback.from_user.id), typing(callback):
+            text = await summarize_chat(provider, contact, messages, heavy=heavy)
+    except asyncio.CancelledError:
+        return
     if callback.message:
         await callback.message.edit_text(
             f"📝 <b>Саммари — {contact.display_name}</b>\n\n{text}",
@@ -172,13 +176,16 @@ async def cb_tasks(callback: CallbackQuery, userbot_manager: UserbotManager) -> 
         return
     _client, owner, contact, messages, provider, _heavy = bundle
 
-    async with typing(callback):
-        items = await extract_and_save_commitments(
-            provider,
-            user_id=owner.id,
-            contact=contact,
-            messages=messages,
-        )
+    try:
+        async with cancellable(callback.from_user.id), typing(callback):
+            items = await extract_and_save_commitments(
+                provider,
+                user_id=owner.id,
+                contact=contact,
+                messages=messages,
+            )
+    except asyncio.CancelledError:
+        return
 
     if not items:
         body = "Явных обязательств не нашёл."
@@ -206,8 +213,11 @@ async def cb_draft(callback: CallbackQuery, userbot_manager: UserbotManager) -> 
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    async with typing(callback):
-        draft = await draft_reply(provider, contact, messages, heavy=heavy)
+    try:
+        async with cancellable(callback.from_user.id), typing(callback):
+            draft = await draft_reply(provider, contact, messages, heavy=heavy)
+    except asyncio.CancelledError:
+        return
     payload = json.dumps({"peer_id": peer_id, "text": draft}, ensure_ascii=False)
 
     from src.db.repo import create_pending_action
@@ -238,8 +248,11 @@ async def cb_catchup(callback: CallbackQuery, userbot_manager: UserbotManager) -
         return
     _client, _owner, contact, messages, provider, heavy = bundle
 
-    async with typing(callback):
-        text = await catchup(provider, contact, messages, heavy=heavy)
+    try:
+        async with cancellable(callback.from_user.id), typing(callback):
+            text = await catchup(provider, contact, messages, heavy=heavy)
+    except asyncio.CancelledError:
+        return
     if callback.message:
         await callback.message.edit_text(
             f"⏪ <b>Где мы остановились — {contact.display_name}</b>\n\n{text}",

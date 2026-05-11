@@ -18,6 +18,7 @@ from src.bot.handlers import (
     send,
     settings as settings_handlers,
     start,
+    stop_cmd,
     style_cmd,
     todos,
 )
@@ -42,6 +43,9 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp["userbot_manager"] = userbot_manager
 
     dp.include_router(start.router)
+    # /stop регистрируется одним из первых: чтобы команда мгновенно
+    # перехватывалась даже если у юзера сейчас идёт долгая операция.
+    dp.include_router(stop_cmd.router)
     dp.include_router(login.router)
     dp.include_router(settings_handlers.router)
     dp.include_router(chat_cmd.router)
