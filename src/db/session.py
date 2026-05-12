@@ -64,10 +64,18 @@ _SOFT_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
         ("dossier", "TEXT"),
         ("dossier_updated_at", "DATETIME"),
         ("last_reengagement_at", "DATETIME"),
+        ("ai_takeover_enabled", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ("ai_takeover_idle_min", "INTEGER DEFAULT 30 NOT NULL"),
+        ("ai_takeover_persona", "TEXT"),
+        ("ai_takeover_intro_sent_at", "DATETIME"),
+        ("ai_takeover_last_reply_at", "DATETIME"),
     ],
     "user_settings": [
         ("vision_enabled", "BOOLEAN DEFAULT 0 NOT NULL"),
         ("video_vision_enabled", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ],
+    "auto_reply_logs": [
+        ("kind", "VARCHAR(16) DEFAULT 'auto_reply' NOT NULL"),
     ],
 }
 

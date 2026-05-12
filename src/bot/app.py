@@ -6,6 +6,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from src.bot.handlers import (
+    ai_cmd,
     all_summary_cmd,
     catchup_cmd,
     chat_cmd,
@@ -64,6 +65,7 @@ async def run_bot(userbot_manager: UserbotManager) -> None:
     dp.include_router(news_topics.router)
     dp.include_router(stalker_cmd.router)
     dp.include_router(meetings_cmd.router)
+    dp.include_router(ai_cmd.router)
     # ВАЖНО: free_text — самым последним, чтобы команды и FSM перехватили текст раньше
     dp.include_router(free_text.router)
 

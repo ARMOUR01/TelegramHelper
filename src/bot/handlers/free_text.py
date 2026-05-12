@@ -342,6 +342,52 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
         )
         return
 
+    if kind in ("ai_takeover_on", "ai_takeover_off"):
+        contact_query = (intent.get("contact") or "").strip()
+        if not contact_query:
+            await message.answer("Не понял на каком контакте. Уточни имя.")
+            return
+        try:
+            idle_min = int(intent.get("idle_min") or 30)
+        except (TypeError, ValueError):
+            idle_min = 30
+        idle_min = max(1, min(720, idle_min))
+
+        candidates = await resolve(client, owner, contact_query)
+        if not candidates:
+            await message.answer(f"Не нашёл контакт «{contact_query}». Попробуй /sync.")
+            return
+        if len(candidates) > 1 and candidates[0].score < 90:
+            await message.answer(
+                f"Несколько кандидатов под «{contact_query}». Уточни: " +
+                ", ".join(c.display_name for c in candidates[:5])
+            )
+            return
+        target = candidates[0]
+        from src.bot.handlers.ai_cmd import _set_takeover
+        enable = (kind == "ai_takeover_on")
+        ok, name = await _set_takeover(
+            message.from_user.id, target.peer_id,
+            enabled=enable, idle_min=idle_min if enable else None,
+        )
+        if not ok:
+            await message.answer(f"Не получилось: {name}")
+            return
+        if enable:
+            await message.answer(
+                f"🤖 <b>AI ведёт чат</b> с <b>{name}</b>\n"
+                f"Через {idle_min} мин моего молчания AI отвечает сам.\n"
+                f"Выключить: <code>/ai_off {name}</code>"
+            )
+        else:
+            await message.answer(f"🔴 AI выключен на <b>{name}</b>. Отвечаешь сам.")
+        return
+
+    if kind == "ai_takeover_list":
+        from src.bot.handlers.ai_cmd import cmd_ai_list
+        await cmd_ai_list(message)
+        return
+
     if kind == "search":
         query = (intent.get("query") or "").strip() or raw
         await message.answer(f"🔎 Ищу: <i>{query}</i>…")

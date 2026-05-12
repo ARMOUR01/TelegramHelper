@@ -38,7 +38,7 @@ def _candidates_keyboard(action: str, candidates: list[ContactCandidate]) -> Inl
     return kb.as_markup()
 
 
-def _actions_keyboard(peer_id: int) -> InlineKeyboardMarkup:
+def _actions_keyboard(peer_id: int, *, ai_enabled: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(text="📝 Саммари", callback_data=f"chat:summary:{peer_id}"),
@@ -48,7 +48,30 @@ def _actions_keyboard(peer_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💬 Черновик ответа", callback_data=f"chat:draft:{peer_id}"),
         InlineKeyboardButton(text="⏪ Где мы остановились", callback_data=f"chat:catchup:{peer_id}"),
     )
+    if ai_enabled:
+        kb.row(InlineKeyboardButton(
+            text="🔴 Выключить AI takeover",
+            callback_data=f"ai:off:{peer_id}",
+        ))
+    else:
+        kb.row(InlineKeyboardButton(
+            text="🤖 AI ведёт чат за меня",
+            callback_data=f"ai:on:{peer_id}",
+        ))
     return kb.as_markup()
+
+
+async def _actions_kb_for(telegram_id: int, peer_id: int) -> InlineKeyboardMarkup:
+    """Возвращает клавиатуру действий с учётом текущего статуса AI takeover."""
+    from src.db.repo import get_or_create_user, get_contact
+
+    ai_enabled = False
+    async with get_session() as session:
+        owner = await get_or_create_user(session, telegram_id)
+        contact = await get_contact(session, owner, peer_id)
+        if contact is not None:
+            ai_enabled = bool(contact.ai_takeover_enabled)
+    return _actions_keyboard(peer_id, ai_enabled=ai_enabled)
 
 
 async def _ensure_client(message: Message, userbot_manager: UserbotManager):
@@ -89,9 +112,10 @@ async def cmd_chat(message: Message, command: CommandObject, userbot_manager: Us
 
 
 async def _show_actions(message: Message, candidate: ContactCandidate) -> None:
+    kb = await _actions_kb_for(message.from_user.id, candidate.peer_id)
     await message.answer(
         f"Выбран: <b>{candidate.label()}</b>. Что сделать?",
-        reply_markup=_actions_keyboard(candidate.peer_id),
+        reply_markup=kb,
     )
 
 
@@ -110,9 +134,10 @@ async def cb_pick(callback: CallbackQuery, userbot_manager: UserbotManager) -> N
         contact = await get_contact(session, owner, peer_id)
     label = contact.display_name if contact else str(peer_id)
     if callback.message:
+        kb = await _actions_kb_for(callback.from_user.id, peer_id)
         await callback.message.edit_text(
             f"Выбран: <b>{label}</b>. Что сделать?",
-            reply_markup=_actions_keyboard(peer_id),
+            reply_markup=kb,
         )
     await callback.answer()
 
