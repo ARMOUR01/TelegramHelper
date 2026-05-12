@@ -1,11 +1,19 @@
-# fly.io конфиг для TelegramHelper.
-# Деплой: см. README раздел "🚀 Deploy на Fly.io".
+# fly.io конфиг для TelegramHelper — оптимизирован под FREE tier ($5 hobby credit).
 #
 # Что важно понимать:
 # - Это не веб-приложение, а воркер-бот → секции [http_service]/[[services]] нет.
 # - SQLite + qdrant + telethon-сессии должны жить на persistent volume — иначе
 #   при каждом рестарте/деплое теряются (Fly.io VM имеют ephemeral fs).
 # - Только 1 машина: SQLite + qdrant local file storage не любят конкуренцию.
+#
+# Free-budget breakdown (приблизительно):
+#   shared-cpu-1x · 512MB RAM · 24/7 ≈ $3.89/мес
+#   1 GB volume ≈ $0.15/мес
+#   ИТОГО ≈ $4.04/мес < $5 hobby credit → бесплатно.
+#
+# Если 512MB будет мало под faster-whisper — в .env ставь WHISPER_MODEL_SIZE=tiny
+# (75 MB вместо дефолтных 500 MB у `small`), либо `fly scale memory 1024`
+# (~$5.70/мес, выйдет за free credit на $0.7-1).
 
 app = "telegramhelper"
 primary_region = "ams"  # сменить на ближайший к тебе регион (см. `fly platform regions`)
@@ -21,15 +29,19 @@ primary_region = "ams"  # сменить на ближайший к тебе р�
   # заново после каждого рестарта.
   XDG_CACHE_HOME = "/app/data/cache"
   HF_HOME = "/app/data/cache/huggingface"
+  # Маленькая whisper-модель чтобы влезть в 512MB RAM на free tier.
+  # При большем VM можно убрать (тогда работает default "small" с лучшим качеством).
+  WHISPER_MODEL_SIZE = "tiny"
 
 [[mounts]]
   source = "telegramhelper_data"
   destination = "/app/data"
-  initial_size = "3gb"
+  initial_size = "1gb"
 
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "2gb"
+  # FREE tier: shared-cpu-1x · 512MB. Если не хватает — fly scale memory 1024.
+  size = "shared-cpu-1x"
+  memory = "512mb"
   # ВАЖНО: ровно одна машина, без авто-стопа.
   # SQLite не выдержит двух процессов, а бот должен слышать события 24/7.
 

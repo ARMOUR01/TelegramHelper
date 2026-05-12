@@ -165,9 +165,16 @@ docker compose logs -f assistant
 
 ---
 
-## 🚀 Deploy на Fly.io (24/7 в облаке, без Mac)
+## 🚀 Deploy на Fly.io (24/7, бесплатно)
 
-Чтобы AI takeover и фоновые задачи (digest, news, поллинг POI) работали круглосуточно — деплой на [Fly.io](https://fly.io). У них есть бесплатный план достаточный для одного инстанса.
+Чтобы AI takeover и фоновые задачи (digest, news, поллинг POI) работали круглосуточно — деплой на [Fly.io](https://fly.io). Подобрана конфигурация которая укладывается в **$5 Hobby credit/мес** → реально бесплатно.
+
+**Бюджет:**
+- `shared-cpu-1x` · 512MB RAM · 24/7 ≈ **$3.89/мес**
+- 1 GB persistent volume ≈ **$0.15/мес**
+- **Итого ≈ $4/мес < $5 credit → $0 к оплате**
+
+Кредитку при регистрации Fly попросит, но снимать не будет пока сидишь в credit.
 
 ### Однократный setup
 
@@ -184,9 +191,9 @@ bash scripts/setup_fly.sh
 
 Что делает скрипт:
 - Создаёт app `telegramhelper` (можно переопределить `FLY_APP_NAME=...`)
-- Создаёт persistent volume `telegramhelper_data` (3GB) в регионе `ams` (`FLY_REGION=...` чтобы сменить)
+- Создаёт persistent volume `telegramhelper_data` (1 GB) в регионе `ams` (`FLY_REGION=...` чтобы сменить)
 - Загружает все переменные из локального `.env` как `fly secrets`
-- Деплоит приложение
+- Деплоит приложение в конфигурации `shared-cpu-1x` 512MB + Whisper `tiny` (`WHISPER_MODEL_SIZE=tiny` в `fly.toml`)
 
 ### Дальнейшие обновления
 
@@ -209,11 +216,17 @@ fly scale memory 4096         # увеличить RAM если whisper пада
 
 ### Особенности
 
-- **Один инстанс** — SQLite не любит конкуренцию, в `fly.toml` зашит `shared-cpu-2x` с 2GB.
+- **Один инстанс** — SQLite не любит конкуренцию, в `fly.toml` зашит `shared-cpu-1x` 512MB.
 - **Volume mount** — `/app/data` (`app.db`, qdrant, кэш whisper, media). При удалении volume — теряется всё.
 - **Регион** — выбирай ближайший к своему Telegram (RU/EU/SG) для меньшей задержки MTProto.
-- **Стоимость** — 1×`shared-cpu-2x` с 2GB RAM + 3GB volume ≈ free tier или $3-5/мес.
-- **Whisper модели** — кэшируются на volume (`/app/data/cache/huggingface`), скачиваются один раз при первом голосовом.
+- **Whisper `tiny`** — на free tier используется маленькая модель (75 MB) для экономии RAM. Качество транскрипции чуть ниже чем `small`, но русская речь распознаётся нормально. Если хочешь `small` обратно — `fly scale memory 1024` (~$5.70/мес, выйдет за free credit на $1) + удали `WHISPER_MODEL_SIZE=tiny` из `fly.toml`.
+- **Whisper модели** кэшируются на volume (`/app/data/cache/huggingface`), скачиваются один раз при первом голосовом.
+
+### Out of memory?
+
+Если в `fly logs` видишь `Out of memory: Killed process` или `Killed` после голосового → не хватает 512 MB под whisper. Варианты:
+1. **Бесплатно:** убрать local whisper, использовать только OpenAI Whisper API (`/settings → 🔑 API-ключи → OpenAI ключ`). Тогда транскрипция идёт через API и RAM не нужна.
+2. **+$1-2/мес:** `fly scale memory 1024` — повышение до 1 GB ($5.70/мес total).
 
 ### 4. Авторизация в боте
 

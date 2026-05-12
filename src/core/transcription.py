@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from src.db.repo import cache_transcript, get_cached_transcript
@@ -9,10 +10,16 @@ from src.db.session import get_session
 logger = logging.getLogger(__name__)
 
 
+# Размер локальной whisper-модели можно подменить через env (tiny | base | small | medium | large-v3)
+# Для деплоя в окружения с малой RAM (Fly.io free, ~512MB) рекомендуется `tiny` (75 MB)
+# или `base` (~150 MB). По умолчанию используем `small` для качества.
+_DEFAULT_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small").strip() or "small"
+
+
 class TranscriptionService:
     """Локальный faster-whisper / OpenAI Whisper API / hybrid (local с fallback в API)."""
 
-    def __init__(self, model_size: str = "small") -> None:
+    def __init__(self, model_size: str = _DEFAULT_MODEL_SIZE) -> None:
         self._model_size = model_size
         self._model = None
         self._lock = asyncio.Lock()

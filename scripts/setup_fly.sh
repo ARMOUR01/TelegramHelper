@@ -40,10 +40,10 @@ else
   echo "✔ App $APP_NAME уже существует"
 fi
 
-# 2) volume
+# 2) volume — 1GB чтобы уложиться в free tier ($0.15/мес)
 if ! fly volumes list -a "$APP_NAME" 2>/dev/null | grep -q "telegramhelper_data"; then
-  echo "▶ Создаю volume telegramhelper_data в $REGION (3GB)…"
-  fly volumes create telegramhelper_data --region "$REGION" --size 3 -a "$APP_NAME" --yes
+  echo "▶ Создаю volume telegramhelper_data в $REGION (1GB)…"
+  fly volumes create telegramhelper_data --region "$REGION" --size 1 -a "$APP_NAME" --yes
 else
   echo "✔ Volume telegramhelper_data уже есть"
 fi
