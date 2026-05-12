@@ -9,25 +9,12 @@ from telethon import TelegramClient, events
 from telethon.tl.custom import Message as TgMessage
 from telethon.tl.types import User as TgUser
 
+from src.core.media import classify as _classify
 from src.db.repo import get_or_create_user, upsert_message, upsert_contact
 from src.db.session import get_session
 
 
 logger = logging.getLogger(__name__)
-
-
-def _classify(msg: TgMessage) -> str:
-    if msg.voice:
-        return "voice"
-    if msg.audio:
-        return "audio"
-    if msg.document:
-        return "document"
-    if msg.photo:
-        return "photo"
-    if msg.text:
-        return "text"
-    return "other"
 
 
 def _peer_id_of(msg: TgMessage) -> int | None:

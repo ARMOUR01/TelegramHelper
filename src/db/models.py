@@ -61,6 +61,10 @@ class UserSettings(Base):
     news_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     news_window_hours: Mapped[int] = mapped_column(Integer, default=24)
     news_digest_time: Mapped[str] = mapped_column(String(5), default="08:00")  # HH:MM в UTC
+    # Vision / video-mozg тоггл. По умолчанию выключено: фото-описание и frame-sampling
+    # видео тратит API-quotas, пусть включается явно.
+    vision_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    video_vision_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped[User] = relationship(back_populates="settings")
 

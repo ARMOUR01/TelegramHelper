@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from src.config import settings as app_settings
 from src.core.documents import extract_text, is_supported
+from src.core.media import classify as _classify_media, extract_audio, sample_video_frames
 from src.core.transcription import transcription_service
+from src.core.vision import describe_image, describe_video_frames
 from src.db.models import Message, User, UserSettings
 from src.db.repo import (
     fetch_chat_messages,
@@ -18,6 +20,7 @@ from src.db.repo import (
     upsert_message,
 )
 from src.db.session import get_session
+from src.llm.router import build_provider
 
 
 logger = logging.getLogger(__name__)
@@ -30,17 +33,7 @@ def _media_dir(owner_telegram_id: int) -> Path:
 
 
 def _classify(msg: TgMessage) -> str:
-    if msg.voice:
-        return "voice"
-    if msg.audio:
-        return "audio"
-    if msg.document:
-        return "document"
-    if msg.photo:
-        return "photo"
-    if msg.text:
-        return "text"
-    return "other"
+    return _classify_media(msg)
 
 
 def _peer_id_from_message(msg: TgMessage) -> int:
@@ -72,6 +65,8 @@ async def _process_one(
     parse_docs: bool,
     openai_key: str | None,
     transcription_mode: str,
+    vision_enabled: bool = False,
+    video_vision_enabled: bool = False,
 ) -> None:
     kind = _classify(msg)
     peer_id = _peer_id_from_message(msg)
@@ -95,6 +90,56 @@ async def _process_one(
             )
         except Exception:
             logger.exception("transcription failed for msg %s", msg.id)
+
+    elif kind in {"video", "video_note"} and transcribe:
+        try:
+            ext = ".mp4" if kind == "video" else ".mov"
+            target = media_root / f"{peer_id}_{msg.id}{ext}"
+            await msg.download_media(file=str(target))
+            media_path = str(target)
+            audio = await extract_audio(target)
+            if audio is not None:
+                file_id = str(getattr(msg.file, "id", None) or f"{peer_id}:{msg.id}")
+                transcript = await transcription_service.transcribe(
+                    audio,
+                    file_id=file_id,
+                    mode=transcription_mode,
+                    openai_key=openai_key,
+                )
+            # Опциональный vision по ключевым кадрам только если включено в /settings
+            if video_vision_enabled and kind == "video":
+                try:
+                    frames_dir = media_root / "frames"
+                    frames = await sample_video_frames(target, frames_dir, count=3)
+                    if frames:
+                        async with get_session() as s2:
+                            owner_fresh = await get_or_create_user(s2, owner.telegram_id)
+                            provider = await build_provider(s2, owner_fresh)
+                        if provider is not None:
+                            caption = await describe_video_frames(provider, frames)
+                            if caption:
+                                # Кладём в extracted_text — он попадает в LLM-контекст
+                                # как обычный текст наряду с transcript.
+                                extracted = caption
+                except Exception:
+                    logger.exception("video vision failed for msg %s", msg.id)
+        except Exception:
+            logger.exception("video transcription failed for msg %s", msg.id)
+
+    elif kind == "photo" and vision_enabled:
+        try:
+            target = media_root / f"{peer_id}_{msg.id}.jpg"
+            await msg.download_media(file=str(target))
+            media_path = str(target)
+            async with get_session() as s2:
+                owner_fresh = await get_or_create_user(s2, owner.telegram_id)
+                provider = await build_provider(s2, owner_fresh)
+            if provider is not None:
+                caption = await describe_image(provider, target)
+                if caption:
+                    extracted = caption
+        except Exception:
+            logger.exception("photo vision failed for msg %s", msg.id)
 
     elif kind == "document" and parse_docs:
         filename = getattr(msg.file, "name", None) or f"{msg.id}.bin"
@@ -186,13 +231,17 @@ async def load_chat(
             parse_docs=parse_docs,
             openai_key=openai_key,
             transcription_mode=transcription_mode,
+            vision_enabled=bool(getattr(s, "vision_enabled", False)),
+            video_vision_enabled=bool(getattr(s, "video_vision_enabled", False)),
         )
 
     if transcribe:
         await _backfill_transcripts(
-            client, owner.id, peer_id,
+            client, owner.id, owner_telegram_id, peer_id,
             limit=limit, media_root=media_root,
             openai_key=openai_key, transcription_mode=transcription_mode,
+            vision_enabled=bool(getattr(s, "vision_enabled", False)),
+            video_vision_enabled=bool(getattr(s, "video_vision_enabled", False)),
         )
 
     async with get_session() as session:
@@ -203,22 +252,30 @@ async def load_chat(
 async def _backfill_transcripts(
     client: TelegramClient,
     owner_id: int,
+    owner_telegram_id: int,
     peer_id: int,
     *,
     limit: int,
     media_root: Path,
     openai_key: str | None,
     transcription_mode: str,
+    vision_enabled: bool = False,
+    video_vision_enabled: bool = False,
 ) -> None:
-    # mirror кладёт voice/audio без transcript — здесь догоняем транскрипцию ленически
+    # mirror кладёт voice/audio/video/video_note/photo без transcript — догоняем ленически.
+    pending_kinds: list[str] = ["voice", "audio", "video", "video_note"]
+    if vision_enabled:
+        pending_kinds.append("photo")
+
     async with get_session() as session:
         result = await session.execute(
             select(Message)
             .where(
                 Message.user_id == owner_id,
                 Message.peer_id == peer_id,
-                Message.kind.in_(("voice", "audio")),
+                Message.kind.in_(tuple(pending_kinds)),
                 Message.transcript.is_(None),
+                Message.extracted_text.is_(None),
             )
             .order_by(Message.date.desc())
             .limit(limit)
@@ -233,20 +290,59 @@ async def _backfill_transcripts(
             tg_msg = await client.get_messages(peer_id, ids=m.message_id)
             if tg_msg is None:
                 continue
-            target = media_root / f"{peer_id}_{m.message_id}.ogg"
-            await tg_msg.download_media(file=str(target))
-            file_id = str(getattr(tg_msg.file, "id", None) or f"{peer_id}:{m.message_id}")
-            transcript = await transcription_service.transcribe(
-                target,
-                file_id=file_id,
-                mode=transcription_mode,
-                openai_key=openai_key,
-            )
+            transcript: str | None = None
+            extracted: str | None = None
+            target: Path | None = None
+
+            if m.kind in ("voice", "audio"):
+                target = media_root / f"{peer_id}_{m.message_id}.ogg"
+                await tg_msg.download_media(file=str(target))
+                file_id = str(getattr(tg_msg.file, "id", None) or f"{peer_id}:{m.message_id}")
+                transcript = await transcription_service.transcribe(
+                    target,
+                    file_id=file_id,
+                    mode=transcription_mode,
+                    openai_key=openai_key,
+                )
+            elif m.kind in ("video", "video_note"):
+                ext = ".mp4" if m.kind == "video" else ".mov"
+                target = media_root / f"{peer_id}_{m.message_id}{ext}"
+                await tg_msg.download_media(file=str(target))
+                audio = await extract_audio(target)
+                if audio is not None:
+                    file_id = str(getattr(tg_msg.file, "id", None) or f"{peer_id}:{m.message_id}")
+                    transcript = await transcription_service.transcribe(
+                        audio,
+                        file_id=file_id,
+                        mode=transcription_mode,
+                        openai_key=openai_key,
+                    )
+                if video_vision_enabled and m.kind == "video":
+                    frames_dir = media_root / "frames"
+                    frames = await sample_video_frames(target, frames_dir, count=3)
+                    if frames:
+                        async with get_session() as s2:
+                            owner_fresh = await get_or_create_user(s2, owner_telegram_id)
+                            provider = await build_provider(s2, owner_fresh)
+                        if provider is not None:
+                            caption = await describe_video_frames(provider, frames)
+                            if caption:
+                                extracted = caption
+            elif m.kind == "photo" and vision_enabled:
+                target = media_root / f"{peer_id}_{m.message_id}.jpg"
+                await tg_msg.download_media(file=str(target))
+                async with get_session() as s2:
+                    owner_fresh = await get_or_create_user(s2, owner_telegram_id)
+                    provider = await build_provider(s2, owner_fresh)
+                if provider is not None:
+                    caption = await describe_image(provider, target)
+                    if caption:
+                        extracted = caption
         except Exception:
-            logger.exception("backfill transcript failed for msg %s in peer %s", m.message_id, peer_id)
+            logger.exception("backfill failed for msg %s in peer %s", m.message_id, peer_id)
             continue
 
-        if not transcript:
+        if not transcript and not extracted:
             continue
         async with get_session() as session:
             await upsert_message(
@@ -255,15 +351,42 @@ async def _backfill_transcripts(
                 sender_id=m.sender_id, sender_name=m.sender_name,
                 is_outgoing=m.is_outgoing, date=m.date,
                 kind=m.kind, text=m.text,
-                transcript=transcript,
-                media_path=str(target) if 'target' in locals() else m.media_path,
-                extracted_text=m.extracted_text,
+                transcript=transcript or m.transcript,
+                media_path=str(target) if target else m.media_path,
+                extracted_text=extracted or m.extracted_text,
             )
 
 
+_KIND_PLACEHOLDERS = {
+    "voice": "[голосовое — не расшифровано]",
+    "audio": "[аудио — не расшифровано]",
+    "video": "[видео — без расшифровки/описания]",
+    "video_note": "[видеокружок — не расшифровано]",
+    "photo": "[фото — описание выключено в /settings]",
+    "sticker": "[стикер]",
+    "gif": "[GIF]",
+    "document": "[документ]",
+    "other": "[медиа]",
+}
+
+
 def message_to_text(m: Message) -> str:
-    """Превращает Message в строку для LLM-промта."""
-    body = m.transcript or m.text or m.extracted_text or f"[{m.kind}]"
+    """Превращает Message в строку для LLM-промта.
+    Подключает transcript / extracted_text если есть; для медиа без расшифровки
+    кладёт человекочитаемый плейсхолдер, чтобы LLM понимал что это.
+    """
+    parts: list[str] = []
+    if m.text:
+        parts.append(m.text)
+    if m.transcript:
+        prefix = "🎙" if m.kind in ("voice", "audio", "video_note") else "🎞"
+        parts.append(f"{prefix} {m.transcript}")
+    if m.extracted_text:
+        prefix = "🖼" if m.kind in ("photo", "video") else "📄"
+        parts.append(f"{prefix} {m.extracted_text}")
+    if not parts:
+        parts.append(_KIND_PLACEHOLDERS.get(m.kind, f"[{m.kind}]"))
+    body = "  ".join(parts)
     who = "Я" if m.is_outgoing else (m.sender_name or "Они")
     when = m.date.strftime("%Y-%m-%d %H:%M")
     return f"[{when}] {who}: {body}"

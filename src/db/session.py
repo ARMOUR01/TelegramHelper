@@ -65,6 +65,10 @@ _SOFT_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
         ("dossier_updated_at", "DATETIME"),
         ("last_reengagement_at", "DATETIME"),
     ],
+    "user_settings": [
+        ("vision_enabled", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ("video_vision_enabled", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ],
 }
 
 

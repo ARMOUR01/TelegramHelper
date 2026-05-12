@@ -49,6 +49,7 @@ async def _render_menu(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         f"🛡 Игнорировать архив: {_check(s.ignore_archived)}\n"
         f"🤖 LLM: <b>{s.llm_provider}</b> · {'тяжёлая' if s.use_heavy_model else 'лёгкая'}\n"
         f"🎤 Транскрипция: <b>{s.transcription_mode}</b>\n"
+        f"📸 Vision: фото {_check(s.vision_enabled)} · видео-кадры {_check(s.video_vision_enabled)}\n"
         f"🔑 Ключи: OpenAI {_check(bool(openai_key))} · Gemini {_check(bool(gemini_key))}\n\n"
         "<i>Тапни раздел, чтобы открыть его настройки и описание.</i>"
     )
@@ -69,6 +70,7 @@ async def _render_menu(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
         InlineKeyboardButton(text="🤖 LLM", callback_data="set:sec:llm"),
         InlineKeyboardButton(text="🎤 Транскрипция", callback_data="set:sec:transcription"),
     )
+    kb.row(InlineKeyboardButton(text="📸 Vision (фото/видео)", callback_data="set:sec:vision"))
     kb.row(InlineKeyboardButton(text="🔑 API-ключи", callback_data="set:sec:keys"))
     kb.row(InlineKeyboardButton(text="❌ Закрыть", callback_data="set:close"))
     return text, kb.as_markup()
@@ -115,6 +117,8 @@ BOOL_KEYS = {
     "reminder_overdue_enabled",
     "news_enabled",
     "use_heavy_model",
+    "vision_enabled",
+    "video_vision_enabled",
 }
 
 CHOICE_KEYS = {
@@ -177,6 +181,8 @@ def _section_for_key(key: str) -> str:
         "auto_reply_mode": "auto_reply",
         "auto_reply_text": "auto_reply",
         "ignore_archived": "privacy",
+        "vision_enabled": "vision",
+        "video_vision_enabled": "vision",
         "digest_enabled": "digest",
         "reminders_enabled": "reminders",
         "reminder_lead_hours": "reminders",
@@ -413,6 +419,31 @@ async def _render_section(telegram_id: int, section: str) -> tuple[str, InlineKe
         kb.row(InlineKeyboardButton(
             text=f"{_check(s.ignore_archived)} Игнорировать архив",
             callback_data="set:tog:ignore_archived",
+        ))
+        kb.row(*_back_row())
+
+    elif section == "vision":
+        text = (
+            "📸 <b>Vision — описание фото и кадров видео</b>\n\n"
+            "<b>Что делает:</b> прогоняет фото через Gemini Vision — получаю описание "
+            "и вытягиваю текст со скриншотов (переписки, доки, чеки, мемы). Описание "
+            "попадает в контекст /digest, /all_summary, /chat, /catchup, /todos, /meetings.\n\n"
+            "<b>Голосовые и видеокружочки</b> расшифровываются и без этого тоггла — "
+            "они идут через whisper.\n\n"
+            "<b>Video Vision</b> дополнительно вырезает 3 ключевых кадра из видео и "
+            "прогоняет их через Vision (для немых видео / мемов).\n\n"
+            "<b>Поддержка:</b> только Gemini. Стоимость одной картинки через Flash — копейки.\n\n"
+            f"Фото-Vision: <b>{'ВКЛ' if s.vision_enabled else 'ВЫКЛ'}</b>\n"
+            f"Video Vision: <b>{'ВКЛ' if s.video_vision_enabled else 'ВЫКЛ'}</b>\n\n"
+            "<i>Описание один раз кладётся в БД (extracted_text) и не дёргается повторно.</i>"
+        )
+        kb.row(InlineKeyboardButton(
+            text=f"{_check(s.vision_enabled)} Описывать фото",
+            callback_data="set:tog:vision_enabled",
+        ))
+        kb.row(InlineKeyboardButton(
+            text=f"{_check(s.video_vision_enabled)} Описывать кадры видео",
+            callback_data="set:tog:video_vision_enabled",
         ))
         kb.row(*_back_row())
 
