@@ -116,8 +116,20 @@ def _payload_to_text(payload: dict, tz_name: str) -> str:
             lines.append(f"- {c.peer_name or c.peer_id}: {c.text} (до {d})")
         parts.append("Обещания мне (горящие):\n" + "\n".join(lines))
     if payload["autoreplies"]:
-        peers = {a.peer_name or a.peer_id for a in payload["autoreplies"]}
-        parts.append(f"Авто-ответов: {len(payload['autoreplies'])} (кому: {', '.join(map(str, peers))})")
+        offline = [a for a in payload["autoreplies"] if (a.kind or "auto_reply") == "auto_reply"]
+        takeover = [a for a in payload["autoreplies"] if a.kind == "ai_takeover"]
+        if offline:
+            peers = {a.peer_name or a.peer_id for a in offline}
+            parts.append(f"Авто-ответов (оффлайн): {len(offline)} (кому: {', '.join(map(str, peers))})")
+        if takeover:
+            # группируем по контактам с подсчётом
+            buckets: dict[str, int] = {}
+            for a in takeover:
+                key = a.peer_name or str(a.peer_id)
+                buckets[key] = buckets.get(key, 0) + 1
+            top = sorted(buckets.items(), key=lambda kv: -kv[1])
+            line = ", ".join(f"{name} × {n}" for name, n in top)
+            parts.append(f"AI takeover за тебя: {len(takeover)} сообщ. ({line})")
     return "\n\n".join(parts) or "Активности не было."
 
 

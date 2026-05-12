@@ -50,11 +50,13 @@ class UserbotManager:
                     await client.connect()
                     if await client.is_user_authorized():
                         self._clients[user.telegram_id] = client
+                        from src.userbot.ai_takeover import attach_ai_takeover
                         from src.userbot.auto_reply import attach_auto_reply
                         from src.userbot.dialog_events import attach_dialog_event_handlers
                         from src.userbot.engagement_events import attach_engagement_handlers
                         from src.userbot.mirror import attach_mirror
                         attach_auto_reply(client, user.telegram_id)
+                        attach_ai_takeover(client, user.telegram_id)
                         attach_dialog_event_handlers(client, user.telegram_id)
                         attach_mirror(client, user.telegram_id)
                         attach_engagement_handlers(client, user.telegram_id)
@@ -70,11 +72,13 @@ class UserbotManager:
 
     def register_client(self, telegram_id: int, client: TelegramClient) -> None:
         self._clients[telegram_id] = client
+        from src.userbot.ai_takeover import attach_ai_takeover
         from src.userbot.auto_reply import attach_auto_reply
         from src.userbot.dialog_events import attach_dialog_event_handlers
         from src.userbot.engagement_events import attach_engagement_handlers
         from src.userbot.mirror import attach_mirror
         attach_auto_reply(client, telegram_id)
+        attach_ai_takeover(client, telegram_id)
         attach_dialog_event_handlers(client, telegram_id)
         attach_mirror(client, telegram_id)
         attach_engagement_handlers(client, telegram_id)

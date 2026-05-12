@@ -34,6 +34,10 @@ OWNER_COMMANDS: list[BotCommand] = [
     BotCommand(command="del",         description="🗑 Удалить моё последнее сообщение в чате"),
     BotCommand(command="search",      description="🔎 Поиск по всей истории сообщений"),
     BotCommand(command="todos",       description="✅ Открытые обещания и их дедлайны"),
+    # AI takeover
+    BotCommand(command="ai_on",       description="🤖 AI ведёт чат за меня (per-contact)"),
+    BotCommand(command="ai_off",      description="🔴 Выключить AI на контакте"),
+    BotCommand(command="ai_list",     description="📋 На ком сейчас включён AI"),
     # Новости
     BotCommand(command="news",          description="📰 Дайджест по теме за период"),
     BotCommand(command="news_topics",   description="🗂 Темы для авто-новостей по утрам"),

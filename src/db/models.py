@@ -127,6 +127,14 @@ class Contact(Base):
     dossier_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_reengagement_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # AI takeover. Если включено — после ai_takeover_idle_min минут моей тишины
+    # бот сам отвечает контакту от моего имени (представляясь AI-ассистентом).
+    ai_takeover_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    ai_takeover_idle_min: Mapped[int] = mapped_column(Integer, default=30)
+    ai_takeover_persona: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_takeover_intro_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ai_takeover_last_reply_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class DeletedMessage(Base):
     """Лог удалённых «для всех» сообщений (то, что юзер ещё видит до удаления — на момент мирора)."""
@@ -242,7 +250,7 @@ class Commitment(Base):
 
 
 class AutoReplyLog(Base):
-    """Лог авто-ответов для прозрачности."""
+    """Лог авто-ответов (offline auto_reply + ai_takeover) для прозрачности."""
 
     __tablename__ = "auto_reply_logs"
 
@@ -252,6 +260,8 @@ class AutoReplyLog(Base):
     peer_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     incoming_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     reply_text: Mapped[str] = mapped_column(Text)
+    # "auto_reply" (default, оффлайн авто-ответ) или "ai_takeover" (per-contact AI).
+    kind: Mapped[str] = mapped_column(String(16), default="auto_reply", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 

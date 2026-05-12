@@ -397,6 +397,7 @@ async def add_auto_reply_log(
     peer_name: str | None,
     incoming_text: str | None,
     reply_text: str,
+    kind: str = "auto_reply",
 ) -> None:
     session.add(
         AutoReplyLog(
@@ -405,6 +406,7 @@ async def add_auto_reply_log(
             peer_name=peer_name,
             incoming_text=incoming_text,
             reply_text=reply_text,
+            kind=kind,
         )
     )
 
