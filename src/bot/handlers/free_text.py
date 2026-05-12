@@ -274,6 +274,74 @@ async def _execute_intent(intent, message, state, userbot_manager, *, tz_name: s
             )
         return
 
+    if kind == "delete_message":
+        from src.bot.handlers.delete_cmd import offer_delete
+        contact_query = (intent.get("contact") or "").strip()
+        if not contact_query:
+            await message.answer("Не понял, в каком чате удалить. Уточни имя.")
+            return
+        try:
+            count = max(1, min(10, int(intent.get("count") or 1)))
+        except (TypeError, ValueError):
+            count = 1
+        match_text = (intent.get("match_text") or None)
+        if isinstance(match_text, str):
+            match_text = match_text.strip() or None
+
+        candidates = await resolve(client, owner, contact_query)
+        if not candidates:
+            await message.answer(f"Не нашёл контакт «{contact_query}». Попробуй /sync.")
+            return
+        if len(candidates) == 1 or candidates[0].score >= 90:
+            target = candidates[0]
+            ctx_store.set_last_peer(message.from_user.id, target.peer_id, target.display_name)
+            await offer_delete(
+                message, message.from_user.id, target.peer_id,
+                count=count, match_text=match_text,
+            )
+        else:
+            await message.answer(
+                f"В чате с кем удалить «<i>{(match_text or 'последнее моё')[:80]}</i>»?",
+                reply_markup=_candidates_keyboard_send(candidates),
+            )
+        return
+
+    if kind == "list_meetings":
+        try:
+            hours = int(intent.get("hours") or 168)
+        except (TypeError, ValueError):
+            hours = 168
+        hours = max(1, min(720, hours))
+        from src.core.meetings import format_meetings, list_meetings
+        async with get_session() as session:
+            owner_fresh = await get_or_create_user(session, message.from_user.id)
+            provider2 = await build_provider(session, owner_fresh)
+            heavy = bool(owner_fresh.settings.use_heavy_model)
+            owner_id = owner_fresh.id
+        if provider2 is None:
+            await message.answer("Нет API-ключа LLM, добавь в /settings.")
+            return
+        notice = await message.answer(f"🗓 Собираю встречи · окно {hours}ч…")
+        try:
+            async with typing(message):
+                items = await list_meetings(
+                    provider2, user_id=owner_id, hours=hours,
+                    future_only=bool(intent.get("future_only", True)),
+                    heavy=heavy,
+                )
+        except asyncio.CancelledError:
+            await notice.edit_text("🛑 Отменено.")
+            return
+        except Exception:
+            logger.exception("list_meetings failed")
+            await notice.edit_text("❌ Не получилось.")
+            return
+        await notice.edit_text(
+            format_meetings(items, hours=hours, future_only=bool(intent.get("future_only", True))),
+            disable_web_page_preview=True,
+        )
+        return
+
     if kind == "search":
         query = (intent.get("query") or "").strip() or raw
         await message.answer(f"🔎 Ищу: <i>{query}</i>…")

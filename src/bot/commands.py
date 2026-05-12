@@ -18,6 +18,7 @@ OWNER_COMMANDS: list[BotCommand] = [
     # Сводки
     BotCommand(command="digest",      description="☀ Утренний дайджест (ждут / горят / авто-ответы)"),
     BotCommand(command="all_summary", description="📋 Выжимка по топ-N личным чатам за период"),
+    BotCommand(command="meetings",    description="🗓 Запланированные встречи и дедлайны по чатам"),
     BotCommand(command="catchup",     description="⏪ Где мы остановились в чате + черновик ответа"),
     BotCommand(command="chat",        description="💬 Меню действий по чату: саммари / задачи / черновик"),
     # Сталкер-пак
@@ -30,6 +31,7 @@ OWNER_COMMANDS: list[BotCommand] = [
     BotCommand(command="deletions",   description="🗑 Удалённые «для всех» сообщения с текстом"),
     # Действия
     BotCommand(command="send",        description="✉ Подготовить сообщение от твоего имени"),
+    BotCommand(command="del",         description="🗑 Удалить моё последнее сообщение в чате"),
     BotCommand(command="search",      description="🔎 Поиск по всей истории сообщений"),
     BotCommand(command="todos",       description="✅ Открытые обещания и их дедлайны"),
     # Новости
