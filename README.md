@@ -163,6 +163,58 @@ docker compose logs -f assistant
 - `media/` — скачанные voice/audio/документы
 - `cache/` — кэш моделей `faster-whisper` (~500 MB после первой транскрипции)
 
+---
+
+## 🚀 Deploy на Fly.io (24/7 в облаке, без Mac)
+
+Чтобы AI takeover и фоновые задачи (digest, news, поллинг POI) работали круглосуточно — деплой на [Fly.io](https://fly.io). У них есть бесплатный план достаточный для одного инстанса.
+
+### Однократный setup
+
+```bash
+# 1. Установи flyctl (Mac)
+brew install flyctl
+
+# 2. Залогинься (откроется браузер)
+fly auth login
+
+# 3. Запусти setup-скрипт из корня репо
+bash scripts/setup_fly.sh
+```
+
+Что делает скрипт:
+- Создаёт app `telegramhelper` (можно переопределить `FLY_APP_NAME=...`)
+- Создаёт persistent volume `telegramhelper_data` (3GB) в регионе `ams` (`FLY_REGION=...` чтобы сменить)
+- Загружает все переменные из локального `.env` как `fly secrets`
+- Деплоит приложение
+
+### Дальнейшие обновления
+
+После `git pull`/изменений просто:
+
+```bash
+fly deploy
+```
+
+### Полезные команды
+
+```bash
+fly logs                      # live-логи
+fly status                    # состояние машины
+fly ssh console -C "python -c 'from src.db.session import engine; print(engine.url)'"
+fly volumes list              # проверить что volume на месте
+fly secrets list              # какие переменные настроены
+fly scale memory 4096         # увеличить RAM если whisper падает с OOM
+```
+
+### Особенности
+
+- **Один инстанс** — SQLite не любит конкуренцию, в `fly.toml` зашит `shared-cpu-2x` с 2GB.
+- **Volume mount** — `/app/data` (`app.db`, qdrant, кэш whisper, media). При удалении volume — теряется всё.
+- **Регион** — выбирай ближайший к своему Telegram (RU/EU/SG) для меньшей задержки MTProto.
+- **Стоимость** — 1×`shared-cpu-2x` с 2GB RAM + 3GB volume ≈ free tier или $3-5/мес.
+- **Whisper модели** — кэшируются на volume (`/app/data/cache/huggingface`), скачиваются один раз при первом голосовом.
+
 ### 4. Авторизация в боте
 
 В чате с control-ботом:

@@ -1,0 +1,40 @@
+# fly.io конфиг для TelegramHelper.
+# Деплой: см. README раздел "🚀 Deploy на Fly.io".
+#
+# Что важно понимать:
+# - Это не веб-приложение, а воркер-бот → секции [http_service]/[[services]] нет.
+# - SQLite + qdrant + telethon-сессии должны жить на persistent volume — иначе
+#   при каждом рестарте/деплое теряются (Fly.io VM имеют ephemeral fs).
+# - Только 1 машина: SQLite + qdrant local file storage не любят конкуренцию.
+
+app = "telegramhelper"
+primary_region = "ams"  # сменить на ближайший к тебе регион (см. `fly platform regions`)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Жёстко прибиваем путь к БД к смонтированному volume.
+  DATABASE_URL = "sqlite+aiosqlite:////app/data/app.db"
+  TZ = "UTC"
+  # Чтобы faster-whisper / huggingface кэшировали модели на volume, а не качали
+  # заново после каждого рестарта.
+  XDG_CACHE_HOME = "/app/data/cache"
+  HF_HOME = "/app/data/cache/huggingface"
+
+[[mounts]]
+  source = "telegramhelper_data"
+  destination = "/app/data"
+  initial_size = "3gb"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+  # ВАЖНО: ровно одна машина, без авто-стопа.
+  # SQLite не выдержит двух процессов, а бот должен слышать события 24/7.
+
+[deploy]
+  strategy = "immediate"
+
+[processes]
+  app = "python main.py"

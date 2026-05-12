@@ -20,3 +20,6 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 README.md
+fly.toml
+.fly/
+scripts/
